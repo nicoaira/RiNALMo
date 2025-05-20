@@ -206,7 +206,8 @@ class FlashMultiHeadSelfAttention(nn.Module):
         if key_padding_mask is not None:
             batch_size = qkv.shape[0]
             seqlen = qkv.shape[1]
-            x_unpad, indices, cu_seqlens, max_s = unpad_input(qkv, key_padding_mask)
+            _unp = unpad_input(qkv, key_padding_mask)
+            x_unpad, indices, cu_seqlens, max_s = _unp[:4]
             output_unpad = self.flash_self_attn(
                     x_unpad, 
                     cu_seqlens=cu_seqlens, 

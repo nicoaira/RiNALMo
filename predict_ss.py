@@ -53,4 +53,5 @@ for i in range(L):
 pred_db = "".join(pred_db)
 
 # 9) Output the predicted dot-bracket structure
+print("predictions")
 print(pred_db)

@@ -2,20 +2,26 @@
 """
 RInalmo secondary-structure prediction (inference only).
 
+OUTPUT FORMAT
+-------------
+The script echoes the *original* table and appends one column:
+
+    secondary_structure   dot-bracket string of the predicted SS
+
 Usage
 -----
-predict_ss.py --input <file.tsv> [--seq-col sequence]
+predict_ss.py --input <file.tsv> [--seq-col sequence] [--output <file.tsv>]
 
-Outputs
--------
-<row-idx>\t<dot-bracket>            to STDOUT
+If --output is omitted the result goes to STDOUT, so your SLURM
+redirections (`> pred_chunk_###.tsv`) still work unchanged.
 """
 import argparse
 import os
+import sys
 from pathlib import Path
 
-import torch
 import pandas as pd
+import torch
 
 from train_sec_struct_prediction import SecStructPredictionWrapper
 from rinalmo.data.alphabet import Alphabet
@@ -23,8 +29,9 @@ from rinalmo.utils.sec_struct import prob_mat_to_sec_struct
 
 # ─────────────────────────────── CLI ────────────────────────────────
 p = argparse.ArgumentParser()
-p.add_argument("--input", required=True, help="TSV/CSV with sequences")
-p.add_argument("--seq-col", default="sequence")
+p.add_argument("--input",  required=True, help="TSV/CSV with sequences")
+p.add_argument("--seq-col", default="sequence", help="column holding the RNA sequence")
+p.add_argument("--output",  help="where to write the TSV (default: stdout)")
 args = p.parse_args()
 
 # ─────────────────────── repo root & model load ─────────────────────
@@ -43,12 +50,13 @@ alphabet = Alphabet(**model.lm.config["alphabet"])
 # ────────────────────────── read sequences ──────────────────────────
 df = pd.read_csv(args.input, sep=None, engine="python")
 if args.seq_col not in df.columns:
-    raise SystemExit(f"column '{args.seq_col}' not found in {args.input}")
+    sys.exit(f"ERROR: column '{args.seq_col}' not found in {args.input}")
 
 seqs = df[args.seq_col].astype(str).tolist()
 
-# ──────────────────────── inference loop ────────────────────────────
-for idx, seq in enumerate(seqs):
+# ───────────────────────── inference loop ───────────────────────────
+predictions = []
+for seq in seqs:
     tokens = torch.tensor(alphabet.batch_tokenize([seq]),
                           dtype=torch.int64,
                           device=device)
@@ -66,4 +74,12 @@ for idx, seq in enumerate(seqs):
             if pairing[i, j]:
                 dot[i], dot[j] = "(", ")"
 
-    print(f"{idx}\t{''.join(dot)}")
+    predictions.append("".join(dot))
+
+# ───────────────────────────── output ───────────────────────────────
+df["secondary_structure"] = predictions
+
+out_fh = open(args.output, "w") if args.output else sys.stdout
+df.to_csv(out_fh, sep="\t", index=False)
+if args.output:
+    out_fh.close()
